@@ -1,0 +1,20 @@
+[tool.poetry]
+name = "vortigaunt"
+version = "0.1.0"
+description = ""
+authors = ["aoisensi <me@aoisensi.info>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "~3.7"
+srcstudiomodel = { path = "../srcstudiomodel" }
+
+[tool.poetry.scripts]
+vortigaunt = "vortigaunt.cli:main"
+
+[tool.poetry.group.dev.dependencies]
+autopep8 = "^2.0.1"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
