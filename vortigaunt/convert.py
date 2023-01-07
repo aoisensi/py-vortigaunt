@@ -4,8 +4,13 @@ from fbx import (
     FbxMesh,
     FbxNode,
     FbxVector4,
+    FbxAxisSystem,
 )
 from open import _open
+
+
+def _transcoord():
+    pass
 
 
 def _convert(mdl_name: str):
@@ -23,6 +28,15 @@ def _convert(mdl_name: str):
     scene.SetSceneInfo(scene_info)
     root = scene.GetRootNode()
 
+    # global settings
+    def set_global_settings():
+        settings = scene.GetGlobalSettings()
+        axis = FbxAxisSystem(2)
+        settings.SetAxisSystem(axis)
+    set_global_settings()
+    # not working
+
+    # begin convert
     vtx_mesh = vtx.body_parts[0].models[0].model_lods[0].meshes[0]
     vtx_sg = vtx_mesh.strip_groups[0]
 
@@ -37,23 +51,20 @@ def _convert(mdl_name: str):
         mesh.SetControlPointAt(FbxVector4(pos[0], pos[1], pos[2]), i)
 
     for vtx_strip in vtx_sg.strips:
-        tric = 0
-        for i1 in range(
-            vtx_strip.index_offset,
-            vtx_strip.index_offset+vtx_strip.num_indices,
-        ):
-            i2 = vtx_sg.indices[i1]
-            i3 = vtx_sg.vertexes[i2].orig_mesh_vert_id
-            i4 = mdl_mesh.vertex_offset + i3
-            index = i4 + mdl_model.vertex_index / 48
+        for i in range(vtx_strip.num_indices // 3):
+            for j in range(3):
+                i1 = i*3 + (2-j) + vtx_strip.index_offset
+                i2 = vtx_sg.indices[i1]
+                i3 = vtx_sg.vertexes[i2].orig_mesh_vert_id
+                i4 = mdl_mesh.vertex_offset + i3
+                index = i4 + mdl_model.vertex_index / 48
 
-            if tric == 0:
-                mesh.BeginPolygon(-1)
-            mesh.AddPolygon(index)
-            if tric == 2:
-                mesh.EndPolygon()
-                tric = -1
-            tric += 1
+                if j == 0:
+                    mesh.BeginPolygon(-1)
+                mesh.AddPolygon(index)
+                if j == 2:
+                    mesh.EndPolygon()
+
     node = FbxNode.Create(manager, '')
     node.SetNodeAttribute(mesh)
     root.AddChild(node)
