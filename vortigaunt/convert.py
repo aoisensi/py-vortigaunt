@@ -76,7 +76,12 @@ def _convert(mdl_name: str):
     for i in range(len(fixed_vertexes)):
         vertex = fixed_vertexes[i]
         pos = vertex.position
-        mesh.SetControlPointAt(FbxVector4(pos[0], pos[1], pos[2]), i)
+        nml = vertex.normal
+        mesh.SetControlPointAt(
+            FbxVector4(pos[0], pos[1], pos[2]),
+            FbxVector4(nml[0], nml[1], nml[2]),
+            i,
+        )
         tex_coord = vertex.tex_coord
         uv_direct.Add(FbxVector2(tex_coord[0], -tex_coord[1]))
 
