@@ -66,6 +66,8 @@ def _convert(mdl_name: str):
         pos = vertex.position
         mesh.SetControlPointAt(FbxVector4(pos[0], pos[1], pos[2]), i)
 
+    # Indices
+    polygon_count = 0
     for vtx_strip in vtx_sg.strips:
         for i in range(vtx_strip.num_indices // 3):
             for j in range(3):
@@ -80,6 +82,15 @@ def _convert(mdl_name: str):
                 mesh.AddPolygon(index)
                 if j == 2:
                     mesh.EndPolygon()
+                    polygon_count += 1
+
+    # LayerElements
+    # Smoothing
+    smoothing = mesh.CreateElementSmoothing()
+    smoothing.SetMappingMode(3)
+    smoothing.SetReferenceMode(0)
+    for _ in range(polygon_count):
+        smoothing.GetDirectArray().Add(1)
 
     node = FbxNode.Create(manager, mdl_model.name)
     node.SetNodeAttribute(mesh)
