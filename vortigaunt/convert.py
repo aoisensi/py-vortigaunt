@@ -39,9 +39,10 @@ def _convert(mdl_name: str):
     vtx_mesh = vtx.body_parts[0].models[0].model_lods[0].meshes[0]
     vtx_sg = vtx_mesh.strip_groups[0]
 
-    mesh = FbxMesh.Create(manager, '')
     mdl_model = mdl.bodyparts[0].models[0]
     mdl_mesh = mdl_model.meshes[0]
+
+    mesh = FbxMesh.Create(manager, mdl_model.name)
 
     # Vertexes Fixup
     def fixup():
@@ -80,7 +81,7 @@ def _convert(mdl_name: str):
                 if j == 2:
                     mesh.EndPolygon()
 
-    node = FbxNode.Create(manager, '')
+    node = FbxNode.Create(manager, mdl_model.name)
     node.SetNodeAttribute(mesh)
     root.AddChild(node)
 
