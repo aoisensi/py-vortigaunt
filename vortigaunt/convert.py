@@ -31,10 +31,9 @@ def _convert(mdl_name: str):
     # global settings
     def set_global_settings():
         settings = scene.GetGlobalSettings()
-        axis = FbxAxisSystem(2)
+        axis = FbxAxisSystem(3, -2, 0)
         settings.SetAxisSystem(axis)
     set_global_settings()
-    # not working
 
     # begin convert
     vtx_mesh = vtx.body_parts[0].models[0].model_lods[0].meshes[0]
@@ -43,10 +42,26 @@ def _convert(mdl_name: str):
     mesh = FbxMesh.Create(manager, '')
     mdl_model = mdl.bodyparts[0].models[0]
     mdl_mesh = mdl_model.meshes[0]
+
+    # Vertexes Fixup
+    def fixup():
+        if vvd.fixups:
+            fixed = []
+            for fixup in vvd.fixups:
+                # lod_index = 0
+                # if fixup.lod >= lod_index:
+                vid = fixup.source_vertex_id
+                num = fixup.num_vertexes
+                fixed += vvd.vertexes[vid:vid+num]
+            return fixed
+        else:
+            return vvd.vertexes
+    fixed_vertexes = fixup()
+
     # Vertexes
-    mesh.InitControlPoints(len(vvd.vertexes))
-    for i in range(len(vvd.vertexes)):
-        vertex = vvd.vertexes[i]
+    mesh.InitControlPoints(len(fixed_vertexes))
+    for i in range(len(fixed_vertexes)):
+        vertex = fixed_vertexes[i]
         pos = vertex.position
         mesh.SetControlPointAt(FbxVector4(pos[0], pos[1], pos[2]), i)
 
@@ -69,4 +84,6 @@ def _convert(mdl_name: str):
     node.SetNodeAttribute(mesh)
     root.AddChild(node)
 
-    FbxCommon.SaveScene(manager, scene, mdl_name[:-4], pFileFormat=1)
+    fbx_name = mdl_name[:-4] + '.fbx'
+    FbxCommon.SaveScene(manager, scene, fbx_name, pFileFormat=1)
+    print(f'saved "{fbx_name}"')

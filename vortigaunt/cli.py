@@ -1,5 +1,6 @@
 import sys
 from argparse import ArgumentParser
+from traceback import format_exc
 
 from convert import _convert
 
@@ -18,8 +19,8 @@ def main():
     for filename in args.names:
         try:
             _convert(filename)
-        except Exception as e:
-            print(e)
+        except Exception:
+            print(format_exc())
 
 
 if __name__ == "__main__":
