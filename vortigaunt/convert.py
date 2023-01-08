@@ -4,6 +4,7 @@ from fbx import (
     FbxMesh,
     FbxNode,
     FbxVector4,
+    FbxVector2,
     FbxAxisSystem,
 )
 from open import _open
@@ -44,6 +45,17 @@ def _convert(mdl_name: str):
 
     mesh = FbxMesh.Create(manager, mdl_model.name)
 
+    # Create LayerElements
+    smoothing = mesh.CreateElementSmoothing()
+    smoothing.SetMappingMode(3)  # Polygon
+    smoothing.SetReferenceMode(0)  # Direct
+    smoothing_direct = smoothing.GetDirectArray()
+    uv = mesh.CreateElementUV('')
+    uv.SetMappingMode(2)  # PolygonVertex
+    uv.SetReferenceMode(2)  # IndexToDirect
+    uv_direct = uv.GetDirectArray()
+    uv_index = uv.GetIndexArray()
+
     # Vertexes Fixup
     def fixup():
         if vvd.fixups:
@@ -65,15 +77,17 @@ def _convert(mdl_name: str):
         vertex = fixed_vertexes[i]
         pos = vertex.position
         mesh.SetControlPointAt(FbxVector4(pos[0], pos[1], pos[2]), i)
+        tex_coord = vertex.tex_coord
+        uv_direct.Add(FbxVector2(tex_coord[0], -tex_coord[1]))
 
     # Indices
-    polygon_count = 0
     for vtx_strip in vtx_sg.strips:
         for i in range(vtx_strip.num_indices // 3):
             for j in range(3):
                 i1 = i*3 + (2-j) + vtx_strip.index_offset
                 i2 = vtx_sg.indices[i1]
-                i3 = vtx_sg.vertexes[i2].orig_mesh_vert_id
+                vertex = vtx_sg.vertexes[i2]
+                i3 = vertex.orig_mesh_vert_id
                 i4 = mdl_mesh.vertex_offset + i3
                 index = i4 + mdl_model.vertex_index / 48
 
@@ -82,15 +96,9 @@ def _convert(mdl_name: str):
                 mesh.AddPolygon(index)
                 if j == 2:
                     mesh.EndPolygon()
-                    polygon_count += 1
+                    smoothing_direct.Add(1)
 
-    # LayerElements
-    # Smoothing
-    smoothing = mesh.CreateElementSmoothing()
-    smoothing.SetMappingMode(3)
-    smoothing.SetReferenceMode(0)
-    for _ in range(polygon_count):
-        smoothing.GetDirectArray().Add(1)
+                uv_index.Add(i3)
 
     node = FbxNode.Create(manager, mdl_model.name)
     node.SetNodeAttribute(mesh)
