@@ -8,6 +8,7 @@ from fbx import (
     FbxAxisSystem,
     FbxLODGroup,
     FbxDistance,
+    FbxSurfaceMaterial,
 )
 from open import _open
 
@@ -53,10 +54,18 @@ def _convert(mdl_name: str):
             return vvd.vertexes
     fixed_vertexes = fixup()
 
+    # Materials
+    materials = []
+    for mdl_material in mdl.skins[0]:
+        material_name = mdl_material.name.split('/')[-1]
+        material = FbxSurfaceMaterial.Create(scene, material_name)
+        root.AddMaterial(material)
+        materials.append(material)
+
     # begin convert
     for mdl_bp, vtx_bp in zip(mdl.bodyparts, vtx.body_parts):
 
-        lod_group = FbxNode.Create(manager, mdl_bp.name)
+        lod_group = FbxNode.Create(manager, f"{mdl_bp.name}_lodgroup")
         lod_group_attr = FbxLODGroup.Create(manager, '')
         lod_group.SetNodeAttribute(lod_group_attr)
         lod_thresholds = 0.0
@@ -73,7 +82,9 @@ def _convert(mdl_name: str):
                     lod_thresholds += vtx_model_lod.switch_point
                     lod_group_attr.AddThreshold(FbxDistance(lod_thresholds, ''))
 
-                node_name = f"{mdl_bp.name}_lod{lod_index}"
+                node_name = mdl_bp.name
+                if lod_index > 0:
+                    node_name += f"_lod{lod_index}"
                 node = FbxNode.Create(manager, node_name)
                 mesh = FbxMesh.Create(manager, '')
 
@@ -87,6 +98,15 @@ def _convert(mdl_name: str):
                 uv.SetReferenceMode(2)  # IndexToDirect
                 uv_direct = uv.GetDirectArray()
                 uv_index = uv.GetIndexArray()
+                material = mesh.CreateElementMaterial()
+                material.SetMappingMode(3)  # Polygon
+                material.SetReferenceMode(2)  # IndexToDirect
+                material_index = material.GetIndexArray()
+                material_ii = 0
+
+                # Material
+                for i in range(root.GetMaterialCount()):
+                    node.AddMaterial(root.GetMaterial(i))
 
                 # Vertexes
                 mesh.InitControlPoints(len(fixed_vertexes))
@@ -111,7 +131,7 @@ def _convert(mdl_name: str):
                                     vertex = vtx_sg.vertexes[i2]
                                     i3 = vertex.orig_mesh_vert_id
                                     i4 = mdl_mesh.vertex_offset + i3  # + mdl_model_vnum
-                                    index = i4 + mdl_model.vertex_index / 48
+                                    index = i4 + mdl_model.vertex_index // 48
 
                                     if j == 0:
                                         mesh.BeginPolygon()
@@ -119,11 +139,13 @@ def _convert(mdl_name: str):
                                     if j == 2:
                                         mesh.EndPolygon()
                                         smoothing_direct.Add(1)
-                                    uv_index.Add(i3)
+                                        material_index.SetAt(material_ii, mdl_mesh.material)
+                                        material_ii += 1
+                                    uv_index.Add(index)
                     # mdl_model_vnum += mdl_mesh.num_vertices
                 lod_group.AddChild(node)
         root.AddChild(lod_group)
 
     fbx_name = mdl_name[:-4] + '.fbx'
-    FbxCommon.SaveScene(manager, scene, fbx_name, pFileFormat=0)
+    FbxCommon.SaveScene(manager, scene, fbx_name, pFileFormat=1)
     print(f'saved "{fbx_name}"')
