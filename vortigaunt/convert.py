@@ -25,77 +25,77 @@ from srcstudiomodel import MDLFlag, MDLBone
 
 def _convert(mdl_name: str, args: Namespace):
     (mdl, vtx, vvd) = _open(mdl_name)
-    (manager, scene) = FbxCommon.InitializeSdkObjects()
-
-    # scene info
-    scene_info = FbxDocumentInfo.Create(manager, 'SceneInfo')
-    title = mdl.name
-    if title.endswith('.mdl'):
-        title = title[:-4]
-    title = title.split('/')[-1]
-    scene_info.mTitle = title
-    scene_info.mAuthor = 'py-vortigaunt'
-    scene.SetSceneInfo(scene_info)
-    root = scene.GetRootNode()
-
-    # global settings
-    def set_global_settings():
-        settings = scene.GetGlobalSettings()
-        axis = FbxAxisSystem(3, -2, 0)
-        settings.SetAxisSystem(axis)
-    set_global_settings()
-
-    # Vertexes Fixup
-    def fixup():
-        if vvd.fixups:
-            fixed = []
-            for fixup in vvd.fixups:
-                # lod_index = 0
-                # if fixup.lod >= lod_index:
-                vid = fixup.source_vertex_id
-                num = fixup.num_vertexes
-                fixed += vvd.vertexes[vid:vid+num]
-            return fixed
-        else:
-            return vvd.vertexes
-    fixed_vertexes = fixup()
-
-    # Materials
-    materials = []
-    for mdl_material in mdl.skins[0]:
-        material_name = mdl_material.name.split('/')[-1]
-        material = FbxSurfaceMaterial.Create(scene, material_name)
-        root.AddMaterial(material)
-        materials.append(material)
-
-    # Skeleton
-    bones_node: List[FbxNode] = []
-
-    def build_skeleton() -> List[FbxNode]:
-        if mdl.flags & MDLFlag.STATIC_PROP:
-            return []
-        nodes: List[FbxNode] = [None] * len(mdl.bones)
-
-        def make_bone(mdl_bone: MDLBone, nodes: List, parent_node):
-            bone_node = FbxNode.Create(scene, mdl_bone.name)
-            bone = FbxSkeleton.Create(scene, mdl_bone.name)
-            pos = FbxDouble3(*mdl_bone.pos)
-            rot = FbxDouble3(*(math.degrees(x) for x in mdl_bone.rot))
-            if parent_node:  # if not root
-                parent_node.AddChild(bone_node)
-                bone.SetSkeletonType(2)  # eLimbNode
-            bone_node.LclTranslation.Set(pos)
-            bone_node.LclRotation.Set(rot)
-            bone_node.SetNodeAttribute(bone)
-            for mdl_cbone in mdl_bone.children:
-                make_bone(mdl_cbone, nodes, bone_node)
-            nodes[mdl.bones.index(mdl_bone)] = bone_node
-        make_bone(mdl.root_bone, nodes, None)
-        return nodes
-    bones_node = build_skeleton()
 
     # begin convert
     for mdl_bp, vtx_bp in zip(mdl.bodyparts, vtx.body_parts):
+        (manager, scene) = FbxCommon.InitializeSdkObjects()
+
+        # scene info
+        scene_info = FbxDocumentInfo.Create(manager, 'SceneInfo')
+        title = mdl.name
+        if title.endswith('.mdl'):
+            title = title[:-4]
+        title = title.split('/')[-1]
+        scene_info.mTitle = title
+        scene_info.mAuthor = 'py-vortigaunt'
+        scene.SetSceneInfo(scene_info)
+        root = scene.GetRootNode()
+
+        # global settings
+        def set_global_settings():
+            settings = scene.GetGlobalSettings()
+            axis = FbxAxisSystem(3, -2, 0)
+            settings.SetAxisSystem(axis)
+        set_global_settings()
+
+        # Vertexes Fixup
+        def fixup():
+            if vvd.fixups:
+                fixed = []
+                for fixup in vvd.fixups:
+                    # lod_index = 0
+                    # if fixup.lod >= lod_index:
+                    vid = fixup.source_vertex_id
+                    num = fixup.num_vertexes
+                    fixed += vvd.vertexes[vid:vid+num]
+                return fixed
+            else:
+                return vvd.vertexes
+        fixed_vertexes = fixup()
+
+        # Materials
+        materials = []
+        for mdl_material in mdl.skins[0]:
+            material_name = mdl_material.name.split('/')[-1]
+            material = FbxSurfaceMaterial.Create(scene, material_name)
+            root.AddMaterial(material)
+            materials.append(material)
+
+        # Skeleton
+        bones_node: List[FbxNode] = []
+
+        def build_skeleton() -> List[FbxNode]:
+            if mdl.flags & MDLFlag.STATIC_PROP:
+                return []
+            nodes: List[FbxNode] = [None] * len(mdl.bones)
+
+            def make_bone(mdl_bone: MDLBone, nodes: List, parent_node):
+                bone_node = FbxNode.Create(scene, mdl_bone.name)
+                bone = FbxSkeleton.Create(scene, mdl_bone.name)
+                pos = FbxDouble3(*mdl_bone.pos)
+                rot = FbxDouble3(*(math.degrees(x) for x in mdl_bone.rot))
+                if parent_node:  # if not root
+                    parent_node.AddChild(bone_node)
+                    bone.SetSkeletonType(2)  # eLimbNode
+                bone_node.LclTranslation.Set(pos)
+                bone_node.LclRotation.Set(rot)
+                bone_node.SetNodeAttribute(bone)
+                for mdl_cbone in mdl_bone.children:
+                    make_bone(mdl_cbone, nodes, bone_node)
+                nodes[mdl.bones.index(mdl_bone)] = bone_node
+            make_bone(mdl.root_bone, nodes, None)
+            return nodes
+        bones_node = build_skeleton()
 
         lod_group = FbxNode.Create(manager, f"{mdl_bp.name}_lodgroup")
         lod_group_attr = FbxLODGroup.Create(manager, '')
@@ -201,14 +201,9 @@ def _convert(mdl_name: str, args: Namespace):
                 lod_group.AddChild(node)
         root.AddChild(lod_group)
 
-        # fbx_name = mdl_name[:-4]
-        # if len(mdl.bodyparts) > 1:
-        #     fbx_name += '_' + mdl_bp.name
-        # fbx_name += '.fbx'
-        # FbxCommon.SaveScene(manager, scene, fbx_name, pFileFormat=int(args.ascii))
-        # print(f'saved "{fbx_name}"')
-        # root.RemoveChild(lod_group)
-
-    fbx_name = mdl_name[:-4] + '.fbx'
-    FbxCommon.SaveScene(manager, scene, fbx_name, pFileFormat=int(args.ascii))
-    print(f'saved "{fbx_name}"')
+        fbx_name = mdl_name[:-4]
+        if len(mdl.bodyparts) > 1 and fbx_name != mdl_bp.name:
+            fbx_name += '_' + mdl_bp.name
+        fbx_name += '.fbx'
+        FbxCommon.SaveScene(manager, scene, fbx_name, pFileFormat=int(args.ascii))
+        print(f'Saved "{fbx_name}"')
