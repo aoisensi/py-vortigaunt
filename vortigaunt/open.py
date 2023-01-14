@@ -1,9 +1,9 @@
-from typing import Tuple
+from typing import Optional, Tuple
 from srcstudiomodel import MDL, VTX, VVD
 from os.path import exists
 
 
-def _open(mdl_name: str) -> Tuple[MDL, VTX, VVD]:
+def _open(mdl_name: str) -> Tuple[MDL, Optional[VTX], Optional[VVD]]:
     if not exists(mdl_name):
         raise Exception(f"{mdl_name} is not found")
 
@@ -15,12 +15,18 @@ def _open(mdl_name: str) -> Tuple[MDL, VTX, VVD]:
     vtx_name = name + ".dx90.vtx"
     vvd_name = name + ".vvd"
 
-    if not exists(vtx_name):
-        raise Exception(f"{vtx_name} is not found")
-    if not exists(vvd_name):
-        raise Exception(f"{vvd_name} is not found")
-
+    mdl = None
     with open(mdl_name, "rb") as mdlf:
+        mdl = MDL(mdlf)
+
+    vtx = None
+    vvd = None
+
+    if exists(vtx_name):
         with open(vtx_name, "rb") as vtxf:
-            with open(vvd_name, "rb") as vvdf:
-                return (MDL(mdlf), VTX(vtxf), VVD(vvdf))
+            vtx = VTX(vtxf)
+    if exists(vvd_name):
+        with open(vvd_name, "rb") as vvdf:
+            vvd = VVD(vvdf)
+
+    return (mdl, vtx, vvd)
