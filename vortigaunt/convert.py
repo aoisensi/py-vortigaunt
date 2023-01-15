@@ -32,13 +32,13 @@ from type import Vector2, Vector3, Vector4
 
 def convert(mdl_name: str, args: Namespace, console: Console):
     def convert_pos(pos: Vector3, scaling: bool = False) -> Vector3:
-        p = (pos[0], pos[2], pos[1])
+        p = (-pos[0], pos[2], pos[1])
         if scaling:
             p = tuple(map(lambda x: x*args.scale, p))
         return p
 
     def convert_quat(quat: Vector4) -> Vector4:
-        return (quat[0], quat[2], quat[1], -quat[3])
+        return (-quat[0], quat[2], quat[1], quat[3])
 
     mdl = open_mdl(mdl_name)
     buffer_views = []
@@ -132,7 +132,7 @@ def convert(mdl_name: str, args: Namespace, console: Console):
 
                         for vtx_strip in vtx_sg.strips:
                             for i in range(vtx_strip.num_indices // 3):
-                                for j in range(3):
+                                for j in [0, 2, 1]:
                                     i1 = i*3 + j + vtx_strip.index_offset
                                     i2 = vtx_sg.indices[i1]
                                     vertex = vtx_sg.vertexes[i2]
