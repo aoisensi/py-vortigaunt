@@ -1,9 +1,8 @@
 from argparse import Namespace
 import struct
+from typing import Dict, List, Tuple
 
 from rich.console import Console
-
-from typing import List
 
 from gltflib import (
     GLTFModel,
@@ -19,15 +18,16 @@ from gltflib import (
     Asset,
     Scene,
     Material,
+    Skin,
 )
 from gltflib.gltf import GLTF
 from gltflib.gltf_resource import GLBResource, FileResource
 
-from open import open_mdl, open_vtx, open_vvd
-# from srcstudiomodel import MDLFlag, MDLBone, MDLAnim
+from srcstudiomodel import MDLFlag, MDLBone
 
+from open import open_mdl, open_vtx, open_vvd
 from calc import vec_max, vec_min
-from type import Vector3
+from type import Vector2, Vector3, Vector4
 
 
 def convert(mdl_name: str, args: Namespace, console: Console):
@@ -37,14 +37,19 @@ def convert(mdl_name: str, args: Namespace, console: Console):
             p = tuple(map(lambda x: x*args.scale, p))
         return p
 
+    def convert_quat(quat: Vector4) -> Vector4:
+        return (quat[0], quat[2], quat[1], -quat[3])
+
     mdl = open_mdl(mdl_name)
     buffer_views = []
     accessors = []
     meshes = []
     nodes = []
+    root = []
     materials = []
+    skins = []
     buffer = bytearray()
-    # short_name = mdl.name.split('/')[0][:-4]
+    short_name = mdl.name.split('/')[0][:-4]
 
     def write_buffer(data: bytearray, target: BufferTarget) -> int:
         buffer_view = BufferView(
@@ -57,69 +62,47 @@ def convert(mdl_name: str, args: Namespace, console: Console):
         buffer_views.append(buffer_view)
         return len(buffer_views)-1
 
+    # Skeleton
+    skin_id = None
+    bone_map: Dict[int, int] = {}
+    if not mdl.flags & MDLFlag.STATIC_PROP:
+        bones: List[int] = []
+
+        def make_bone(bone: MDLBone) -> int:
+            node = Node(
+                name=bone.name,
+                translation=list(convert_pos(bone.pos, True)),
+                rotation=list(convert_quat(bone.quat)),
+            )
+            children = []
+            for cbone in bone.children:
+                children.append(make_bone(cbone))
+            node.children = children if children else None
+            nodes.append(node)
+            id = len(nodes)-1
+            bone_map[bone.id] = id
+            bones.append(id)
+            return id
+        skeleton = make_bone(mdl.root_bone)
+        root.append(skeleton)
+
+        skins.append(Skin(
+            name=short_name,
+            skeleton=skeleton,
+            joints=bones,
+        ))
+        skin_id = len(skins)-1
+
     if mdl.bodyparts:
         # Vertex
-        def build_vertex_buffer():
-            pos_max = (-99999999.0, -99999999.0, -99999999.0)
-            pos_min = (+99999999.0, +99999999.0, +99999999.0)
-            uv_max = (0.0, 0.0)
-            uv_min = (1.0, 1.0)
-            normal_max = (0.0, 0.0, 0.0)
-            normal_min = (1.0, 1.0, 1.0)
-            vertexes_buffer = bytearray()
-            uvs_buffer = bytearray()
-            normals_buffer = bytearray()
-            vvd = open_vvd(mdl_name)
-            vvd_vertexes = vvd.vertexes
-            if vvd.fixups:
-                vvd_vertexes = []
-                for fixup in vvd.fixups:
-                    vid = fixup.source_vertex_id
-                    num = fixup.num_vertexes
-                    vvd_vertexes += vvd.vertexes[vid:vid+num]
-            for vvdv in vvd_vertexes:
-                pos = convert_pos(vvdv.position, True)
-                pos_max = vec_max(pos_max, pos)
-                pos_min = vec_min(pos_min, pos)
-                vertexes_buffer.extend(struct.pack('fff', *pos))
-
-                uv = vvdv.tex_coord
-                uv_max = vec_max(uv_max, uv)
-                uv_min = vec_min(uv_min, uv)
-                uvs_buffer.extend(struct.pack('ff', *uv))
-
-                normal = convert_pos(vvdv.normal)
-                normal_max = vec_max(normal_max, normal)
-                normal_min = vec_min(normal_min, normal)
-                normals_buffer.extend(struct.pack('fff', *normal))
-
-            count = len(vvd_vertexes)
-            accessors.append(Accessor(
-                bufferView=write_buffer(vertexes_buffer, BufferTarget.ARRAY_BUFFER),
-                componentType=ComponentType.FLOAT.value,
-                type=AccessorType.VEC3.value,
-                count=count,
-                min=list(pos_min), max=list(pos_max),
-            ))
-            pos_aid = len(accessors)-1
-            accessors.append(Accessor(
-                bufferView=write_buffer(uvs_buffer, BufferTarget.ARRAY_BUFFER),
-                componentType=ComponentType.FLOAT.value,
-                type=AccessorType.VEC2.value,
-                count=count,
-                min=list(uv_min), max=list(uv_max),
-            ))
-            uv_aid = len(accessors)-1
-            accessors.append(Accessor(
-                bufferView=write_buffer(normals_buffer, BufferTarget.ARRAY_BUFFER),
-                componentType=ComponentType.FLOAT.value,
-                type=AccessorType.VEC3.value,
-                count=count,
-                min=list(normal_min), max=list(normal_max),
-            ))
-            nrml_aid = len(accessors)-1
-            return (pos_aid, uv_aid, nrml_aid)
-        (pos_aid, uv_aid, nrml_aid) = build_vertex_buffer()
+        vvd = open_vvd(mdl_name)
+        vvd_vertexes = vvd.vertexes
+        if vvd.fixups:
+            vvd_vertexes = []
+            for fixup in vvd.fixups:
+                vid = fixup.source_vertex_id
+                num = fixup.num_vertexes
+                vvd_vertexes += vvd.vertexes[vid:vid+num]
 
         # Material
         for mdl_material in mdl.skins[0]:
@@ -133,9 +116,20 @@ def convert(mdl_name: str, args: Namespace, console: Console):
 
             for mdl_model, vtx_model in zip(mdl_bp.models, vtx_bp.models):
                 for mdl_mesh, vtx_mesh in zip(mdl_model.meshes, vtx_model.model_lods[0].meshes):
+                    if mdl_mesh.num_vertices == 0:
+                        continue
+                    primitive = Primitive()
+                    index_map: Dict[int, int] = {}
+                    positions: List[Vector3] = []
+                    indeces: List[int] = []
+                    texcoords: List[Vector2] = []
+                    normals: List[Vector3] = []
+                    weights: List[Tuple[float, float, float, float]] = []
+                    joints: List[Tuple[int, int, int, int]] = []
+                    pos_max = (-99999999.0, -99999999.0, -99999999.0)
+                    pos_min = (+99999999.0, +99999999.0, +99999999.0)
                     for vtx_sg in vtx_mesh.strip_groups:
-                        primitive = Primitive()
-                        indeces: List[int] = []
+
                         for vtx_strip in vtx_sg.strips:
                             for i in range(vtx_strip.num_indices // 3):
                                 for j in range(3):
@@ -144,32 +138,151 @@ def convert(mdl_name: str, args: Namespace, console: Console):
                                     vertex = vtx_sg.vertexes[i2]
                                     i3 = vertex.orig_mesh_vert_id
                                     i4 = mdl_mesh.vertex_offset + i3
-                                    index = i4 + mdl_model.vertex_index // 48
+                                    vvd_index = i4 + mdl_model.vertex_index // 48
 
-                                    indeces.append(index)
+                                    if vvd_index not in index_map:
+                                        vvdv = vvd_vertexes[vvd_index]
+                                        index_map[vvd_index] = len(index_map)
+                                        pos = convert_pos(vvdv.position, True)
+                                        pos_max = vec_max(pos_max, pos)
+                                        pos_min = vec_min(pos_min, pos)
+                                        positions.append(pos)
+                                        texcoords.append(vvdv.tex_coord)
+                                        normals.append(convert_pos(vvdv.normal))
 
-                        indeces_buffer = bytearray()
-                        for index in indeces:
-                            indeces_buffer.extend(struct.pack('H', index))
-                        bv_id = write_buffer(indeces_buffer, BufferTarget.ELEMENT_ARRAY_BUFFER)
+                                        # Skining
+                                        if skin_id is not None:
+                                            bw = vvdv.bone_weights
+                                            weight = [0.0, 0.0, 0.0, 0.0]
+                                            joint = [0, 0, 0, 0]
+                                            for k in range(4):
+                                                if k < bw.numbones:
+                                                    weight[k] = bw.weight[k]
+                                                    joint[k] = bone_map[bw.bone[k]]
+                                            weights.append(tuple(weight))
+                                            joints.append(tuple(joint))
+
+                                    indeces.append(index_map[vvd_index])
+
+                    # Positions
+                    positions_buffer = bytearray()
+                    for pos in positions:
+                        positions_buffer.extend(struct.pack('fff', *pos))
+                    positions_bv = write_buffer(positions_buffer, BufferTarget.ARRAY_BUFFER)
+                    accessors.append(Accessor(
+                        bufferView=positions_bv,
+                        componentType=ComponentType.FLOAT.value,
+                        type=AccessorType.VEC3.value,
+                        count=len(positions),
+                        max=list(pos_max),
+                        min=list(pos_min),
+                    ))
+                    primitive.attributes.POSITION = len(accessors)-1
+
+                    # Texcoords
+                    texcoords_buffer = bytearray()
+                    for uv in texcoords:
+                        texcoords_buffer.extend(struct.pack('ff', *uv))
+                    texcoords_bv = write_buffer(texcoords_buffer, BufferTarget.ARRAY_BUFFER)
+                    accessors.append(Accessor(
+                        bufferView=texcoords_bv,
+                        componentType=ComponentType.FLOAT.value,
+                        type=AccessorType.VEC2.value,
+                        count=len(texcoords),
+                    ))
+                    primitive.attributes.TEXCOORD_0 = len(accessors)-1
+
+                    # Normals
+                    normals_buffer = bytearray()
+                    for normal in normals:
+                        normals_buffer.extend(struct.pack('fff', *normal))
+                    normals_bv = write_buffer(normals_buffer, BufferTarget.ARRAY_BUFFER)
+                    accessors.append(Accessor(
+                        bufferView=normals_bv,
+                        componentType=ComponentType.FLOAT.value,
+                        type=AccessorType.VEC3.value,
+                        count=len(normals),
+                    ))
+                    primitive.attributes.NORMAL = len(accessors)-1
+
+                    # Indeces
+                    indeces_buffer = bytearray()
+                    for index in indeces:
+                        indeces_buffer.extend(struct.pack('H', index))
+                    indeces_bv = write_buffer(indeces_buffer, BufferTarget.ELEMENT_ARRAY_BUFFER)
+                    accessors.append(Accessor(
+                        bufferView=indeces_bv,
+                        componentType=ComponentType.UNSIGNED_SHORT.value,
+                        type=AccessorType.SCALAR.value,
+                        count=len(indeces),
+                    ))
+                    primitive.indices = len(accessors)-1
+
+                    if skin_id is not None:
+                        # Weigths
+                        weights_buffer = bytearray()
+                        for weight in weights:
+                            weights_buffer.extend(struct.pack('ffff', *weight))
+                        weights_bv = write_buffer(weights_buffer, BufferTarget.ELEMENT_ARRAY_BUFFER)
+                        accessors.append(Accessor(
+                            bufferView=weights_bv,
+                            componentType=ComponentType.FLOAT.value,
+                            type=AccessorType.VEC4.value,
+                            count=len(weights),
+                        ))
+                        primitive.attributes.WEIGHTS_0 = len(accessors)-1
+
+                        # Joints
+                        joints_buffer = bytearray()
+                        for joint in joints:
+                            joints_buffer.extend(struct.pack('BBBB', *joint))
+                        joints_bv = write_buffer(joints_buffer, BufferTarget.ARRAY_BUFFER)
+                        accessors.append(Accessor(
+                            bufferView=joints_bv,
+                            componentType=ComponentType.UNSIGNED_BYTE.value,
+                            type=AccessorType.VEC4.value,
+                            count=len(joints),
+                        ))
+                        primitive.attributes.JOINTS_0 = len(accessors)-1
+
+                    # Material
+                    primitive.material = mdl_mesh.material
+                    if skin_id is not None:
+                        # Weights
+                        weights_buffer = bytearray()
+                        for weight in weights:
+                            weights_buffer.extend(struct.pack('ffff', *weight))
+                        wbv_id = write_buffer(weights_buffer, BufferTarget.ARRAY_BUFFER)
 
                         accessors.append(Accessor(
-                            bufferView=bv_id,
-                            componentType=ComponentType.UNSIGNED_SHORT,
-                            type=AccessorType.SCALAR.value,
-                            count=len(indeces),
+                            bufferView=wbv_id,
+                            componentType=ComponentType.FLOAT,
+                            type=AccessorType.VEC4.value,
+                            count=len(weights),
                         ))
-                        primitive.indices = len(accessors)-1
-                        primitive.attributes.POSITION = pos_aid
-                        primitive.attributes.TEXCOORD_0 = uv_aid
-                        primitive.attributes.NORMAL = nrml_aid
-                        primitive.material = mdl_mesh.material
-                        primitives.append(primitive)
+
+                        primitive.attributes.WEIGHTS_0 = len(accessors)-1
+
+                        # Joints
+                        joints_buffer = bytearray()
+                        for joint in joints:
+                            joints_buffer.extend(struct.pack('BBBB', *joint))
+                        jbv_id = write_buffer(joints_buffer, BufferTarget.ARRAY_BUFFER)
+
+                        accessors.append(Accessor(
+                            bufferView=jbv_id,
+                            componentType=ComponentType.UNSIGNED_BYTE,
+                            type=AccessorType.VEC4.value,
+                            count=len(joints),
+                        ))
+                        primitive.attributes.JOINTS_0 = len(accessors)-1
+                    primitives.append(primitive)
 
             mesh.primitives = primitives
             meshes.append(mesh)
-            node = Node(name=mdl_bp.name, mesh=len(meshes)-1)
+            node = Node(name=mdl_bp.name, mesh=len(meshes)-1, skin=skin_id)
             nodes.append(node)
+            root.append(len(nodes)-1)
 
     model = GLTFModel(
         asset=Asset(generator='py-vortigaunt'),
@@ -179,9 +292,8 @@ def convert(mdl_name: str, args: Namespace, console: Console):
         meshes=meshes,
         nodes=nodes,
         materials=materials,
-        scenes=[Scene(
-            nodes=list(range(len(nodes))),
-        )],
+        skins=skins,
+        scenes=[Scene(nodes=root)],
         scene=0,
     )
 
