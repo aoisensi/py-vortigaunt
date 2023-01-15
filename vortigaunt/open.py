@@ -1,32 +1,31 @@
-from typing import Optional, Tuple
 from srcstudiomodel import MDL, VTX, VVD
 from os.path import exists
 
 
-def _open(mdl_name: str) -> Tuple[MDL, Optional[VTX], Optional[VVD]]:
+def open_mdl(mdl_name: str) -> MDL:
     if not exists(mdl_name):
-        raise Exception(f"{mdl_name} is not found")
+        raise Exception(f'{mdl_name} is not found')
 
-    if not mdl_name.endswith(".mdl"):
+    if not mdl_name.endswith('.mdl'):
         raise Exception('the filename is not end with ".mdl"')
 
-    name = mdl_name[:-4]
+    with open(mdl_name, 'rb') as mdlf:
+        return MDL(mdlf)
 
-    vtx_name = name + ".dx90.vtx"
-    vvd_name = name + ".vvd"
 
-    mdl = None
-    with open(mdl_name, "rb") as mdlf:
-        mdl = MDL(mdlf)
+def open_vtx(mdl_name: str) -> VTX:
+    name = mdl_name[:-4] + '.dx90.vtx'
+    if not exists(name):
+        raise Exception(f'"{name}" is not found')
 
-    vtx = None
-    vvd = None
+    with open(name, 'rb') as f:
+        return VTX(f)
 
-    if exists(vtx_name):
-        with open(vtx_name, "rb") as vtxf:
-            vtx = VTX(vtxf)
-    if exists(vvd_name):
-        with open(vvd_name, "rb") as vvdf:
-            vvd = VVD(vvdf)
 
-    return (mdl, vtx, vvd)
+def open_vvd(mdl_name: str) -> VVD:
+    name = mdl_name[:-4] + '.vvd'
+    if not exists(name):
+        raise Exception(f'"{name}" is not found')
+
+    with open(name, 'rb') as f:
+        return VVD(f)

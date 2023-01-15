@@ -1,13 +1,16 @@
 [tool.poetry]
 name = "vortigaunt"
-version = "0.8.0"
+version = "0.10.0"
 description = ""
 authors = ["aoisensi <me@aoisensi.info>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "~3.7"
+python = "^3.11"
 srcstudiomodel = { path = "../srcstudiomodel" }
+gltflib = "^1.0.13"
+rich-argparse = "^1.0.0"
+rich = "^13.1.0"
 
 [tool.poetry.scripts]
 vortigaunt = "vortigaunt.cli:main"

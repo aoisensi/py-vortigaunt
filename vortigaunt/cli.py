@@ -1,29 +1,27 @@
-import sys
 from argparse import ArgumentParser
-from traceback import format_exc
 
-from vortigaunt.convert import _convert
+from rich.console import Console
+from rich_argparse import RichHelpFormatter
 
+from convert import convert
 
-parser = ArgumentParser()
+parser = ArgumentParser(formatter_class=RichHelpFormatter)
 
-parser.add_argument("-S", "--scale", default=2.0)
+parser.add_argument("-S", "--scale", default=0.02)
 parser.add_argument("names", metavar="NAME", type=str,
                     nargs="+", help="mdl file name")
 parser.add_argument("--ascii", action='store_true')
-
 args = parser.parse_args()
+
+console = Console()
 
 
 def main():
-    if 'FbxCommon' not in sys.modules:
-        raise Exception('fbx sdk is not found. please install manualy.')
-
     for filename in args.names:
         try:
-            _convert(filename, args)
+            convert(filename, args, console)
         except Exception:
-            print(format_exc())
+            console.print_exception()
 
 
 if __name__ == "__main__":
